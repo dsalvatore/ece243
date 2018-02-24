@@ -1,1 +1,67 @@
 
+.equ UART_BASE, 0x10001020
+.equ UART_RR, 0											#receiver address
+.equ UART_TR, 0											#transmitter address
+.equ UART_CSR, 4										#control and status register address
+
+.text
+
+  call ReadSensorsAndSpeed
+	mov r10, r2												#move the return value into a caller-saved register
+  
+	
+	
+  # Decide what to do
+  if sensors are 0x1f
+    call SetSteering to steer straight
+  else if sensors are 0x1e
+    call SetSteering to steer right
+  else if sensors are 0x1c
+    call SetSteering to steer hard right
+  else if sensors are 0x0f
+    call SetSteering to steer left
+  else if sensors are 0x07
+    call SetSteering to steer hard left
+  else
+    Hope this doesn't happen
+
+  # Also do something about the speed.
+
+
+---------------------------------------------------------------------------------------------------
+ReadSensorsAndSpeed:
+	movi r4, 0x02												#packet type = 2 for Request sensor and speed data
+	call ReadOneByteFromUART
+	ret																	#data is stored in r2 and we haven't changed it
+
+
+
+---------------------------------------------------------------------------------------------------
+#ReadOneByteFromUART subroutine
+ReadOneByteFromUART:	
+	movia r8, UART_BASE
+	
+	READ_POLL:	
+	ldwio r2, UART_RR(r8)
+	srli r10, r2, 15    								#shift the read valid bit (bit 15) to least sig bit
+																			#store in r10 because we may need r9 to extract data if valid
+	andi r10, 0x0001
+	beq r10, r0, READ_POLL 									#if read is not valid, keep reading
+
+	andi r2, r2, 0xff										#if valid, mask out the data bits(0-7)
+	ret
+
+-----------------------------------------------------------------------------------------------------
+#WriteOneByteToUART subroutine
+ReadOneByteFromUART:	
+	movia r8, UART_BASE
+	
+	WRITE_POLL:
+  ldwio r9, UART_CSR(r8) 							#Load from the JTAG 
+  srli  r9, r9, 16  									#Check only the write available bits
+  beq   r9, r0, WRITE_POLL 						#If this is 0 (branch true), data cannot be sent
+	
+  stwio r4, UART_TR(r8) 							#Write the byte to the JTAG, r4 contains the actual data
+	ret
+
+-----------------------------------------------------------------------------------------------------
