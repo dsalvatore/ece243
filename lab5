@@ -1,4 +1,3 @@
-
 .equ UART_BASE, 0x10001020
 .equ UART_RR, 0											#receiver address
 .equ UART_TR, 0											#transmitter address
@@ -6,33 +5,100 @@
 
 .text
 
+	#initialize
+	mov r4, r0
+	call WriteOneByteToUART
+
+
+LOOP:
   call ReadSensorsAndSpeed
-	mov r10, r2												#move the return value into a caller-saved register
-  
-	
-	
-  # Decide what to do
-  if sensors are 0x1f
-    call SetSteering to steer straight
-  else if sensors are 0x1e
-    call SetSteering to steer right
-  else if sensors are 0x1c
-    call SetSteering to steer hard right
-  else if sensors are 0x0f
-    call SetSteering to steer left
-  else if sensors are 0x07
-    call SetSteering to steer hard left
-  else
-    Hope this doesn't happen
+	mov r10, r2											#move the return value into a caller-saved register
+	srli r10, 8											#first byte is 0x00 don't need it 
+	andi r11, r10, 0x00ff								#get the sensor data
+
+	movi r16, 0x1f
+	movi r17, 0x1e
+	movi r18, 0x1c
+	movi r19, 0x0f
+	movi r20, 0x07
+
+	beq r11, r16, STEER_STRAIGHT
+	beq r11, r17, STEER_RIGHT
+	beq r11, r18, STEER_HARD_RIGHT
+	beq r11, r19, STEER_LEFT
+	beq r11, r20, STEER_HARD_LEFT
+  	
 
   # Also do something about the speed.
+  # get the speed byte
+  SPEED:
+  	srli r10, 8
+
+  	...
+
+#at the end
+br LOOP
+
+
+
+----------------------------------
+STEER_STRAIGHT:
+
+movia r4, 0x0005			# 0x00 means go striaght
+call WriteOneByteToUART
+
+br SPEED
+
+----------------------------------
+STEER_LEFT:
+
+#save caller-saved register if necessary
+
+movi r4, 0xC005 			# first byte 0x05 is to change steer, 0xfc is (-64) means turn left half power
+call WriteOneByteToUART
+
+#restore caller-saved register if needed
+
+br SPEED
+
+----------------------------------
+STEER_HARD_LEFT:
+
+movia r4, 0x8105			# 0x81 means turn hard left
+call WriteOneByteToUART
+
+br SPEED
+
+----------------------------------
+STEER_RIGHT:
+
+#save caller-saved register if necessary
+
+movia r4, 0x4005 			# first byte 0x05 is to change steer, 0x40 is (64) means turn right half power
+call WriteOneByteToUART
+
+#restore caller-saved register if needed
+
+br SPEED
+
+-----------------------------------
+STEER_HARD_RIGHT:
+
+movia r4, 0x7f05			# 0x7f means turn hard right
+call WriteOneByteToUART
+
+br SPEED
+
+
+
+
 
 
 ---------------------------------------------------------------------------------------------------
 ReadSensorsAndSpeed:
 	movi r4, 0x02												#packet type = 2 for Request sensor and speed data
 	call ReadOneByteFromUART
-	ret																	#data is stored in r2 and we haven't changed it
+	ret															#data is stored in r2 and we haven't changed it
 
 
 
@@ -43,8 +109,8 @@ ReadOneByteFromUART:
 	
 	READ_POLL:	
 	ldwio r2, UART_RR(r8)
-	srli r10, r2, 15    								#shift the read valid bit (bit 15) to least sig bit
-																			#store in r10 because we may need r9 to extract data if valid
+	srli r10, r2, 15    									#shift the read valid bit (bit 15) to least sig bit
+															#store in r10 because we may need r9 to extract data if valid
 	andi r10, 0x0001
 	beq r10, r0, READ_POLL 									#if read is not valid, keep reading
 
@@ -56,12 +122,12 @@ ReadOneByteFromUART:
 ReadOneByteFromUART:	
 	movia r8, UART_BASE
 	
-	WRITE_POLL:
-  ldwio r9, UART_CSR(r8) 							#Load from the JTAG 
+WRITE_POLL:
+  ldwio r9, UART_CSR(r8) 								#Load from the JTAG 
   srli  r9, r9, 16  									#Check only the write available bits
-  beq   r9, r0, WRITE_POLL 						#If this is 0 (branch true), data cannot be sent
+  beq   r9, r0, WRITE_POLL 								#If this is 0 (branch true), data cannot be sent
 	
-  stwio r4, UART_TR(r8) 							#Write the byte to the JTAG, r4 contains the actual data
+  stwio r4, UART_TR(r8) 								#Write the byte to the JTAG, r4 contains the actual data
 	ret
 
 -----------------------------------------------------------------------------------------------------
